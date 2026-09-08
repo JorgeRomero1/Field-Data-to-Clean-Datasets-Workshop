@@ -1,0 +1,19 @@
+TRAIT,TRAIT_SHORT
+Biomass whole plant,WPB
+Spring Tiller Count,STC
+Biomass sampling,BS
+Fall Stand count,SSC
+Chaff,CH
+Spring Stand count,SSC
+Fall stand count ,FSC
+Spring dry biomass weight ,SDB
+Spring fresh biomass weight,SFB
+Fall fresh biomass weight,FFB
+Fall dry biomass weight,FDB
+Tiller Count,TC
+Crop vigor score,CVS
+Grinded Stover,GST
+Grinded chaff,GCH
+evaluate disease severity,DS
+Disease severity ,DS
+Flowering percentage,FWR

@@ -1,0 +1,431 @@
+---
+title: "Nitrogen × Variety Trial"
+
+author:
+  - name: Jorge Romero
+  - name: Jazmin Gastaldi
+
+date: today
+date-format: "MMMM D, YYYY"
+
+format:
+  html:
+    toc: true
+    toc-location: right
+    theme: cosmo
+    self-contained: true
+engine: knitr
+---
+
+**Project Lead:** Romulo Lollato
+
+# Project Description
+
+This project evaluates three key cultivar traits: **phenotypic plasticity of grain yield, grain protein deviation (GPD), and maturity**. The main objective was to determine whether variation in these traits influences winter wheat response to N availability and the amount of N required to maximize grain yield. The study also aimed to validate the classification of selected cultivars for these traits and investigate physiological and environmental factors associated with cultivar-specific N responses.
+
+Rainfed field experiments were conducted across **14 environments in Kansas during the 2023–2024 and 2024–2025 growing seasons**, representing seven locations across the state. Experiments followed a split-plot design with three or four replications. Seven N rates, ranging from 0 to 202 kg N ha⁻¹, were assigned to whole plots, while eight winter wheat cultivars contrasting in yield plasticity, GPD, and maturity were assigned to subplots. Crop management, including planting, fertilization, weed control, and disease management, followed practices representative of commercial wheat production in each region.
+
+Measurements were collected throughout the growing season to characterize soil conditions, crop development, biomass production, yield components, grain yield, and grain quality. Soil samples collected at sowing were used to estimate soil N availability. Heading progression was monitored to characterize cultivar maturity. Aboveground biomass was collected at anthesis and physiological maturity to measure biomass production, plant N concentration, harvest index, spike density, kernel number, and thousand kernel weight. At maturity, plots were harvested with a small-plot combine to determine grain yield, moisture, and test weight. Grain protein concentration was measured using near-infrared spectroscopy and expressed on a dry basis.
+
+# Experimental Design
+
+The experiment was established as a complete factorial split-plot design. Nitrogen rate was assigned to the whole plot and cultivar to the subplot. The combination of seven N rates and eight cultivars resulted in 56 N × cultivar treatment combinations within each replication. Three or four replications were used depending on the environment.
+
+| Experimental factor | Levels | Experimental unit |
+|---|---:|---|
+| Nitrogen rate | 7 | Whole plot |
+| Cultivar | 8 | Subplot |
+| N × Cultivar combinations | 56 | — |
+| Replications | 3–4 | Environment dependent |
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(mapview)
+library(sf)
+library(daymetr)
+library(tigris)
+library(janitor)
+
+source("report_functions.R")
+
+trial_data <- read_csv("../../SEASON 2023-24/01-Data/NxV/NxV_trial.csv") |>
+  rbind(read_csv("../../SEASON 2024-25/01-Data/NxV/NxV_trial.csv")) |>
+  select(-Treatment_3) |> 
+  rename_with(~str_replace_all(.x, "%", "Pct"), contains("%"))
+
+site_info <- readxl::read_xlsx("../metadata/Site.xlsx", 
+                               sheet = "location_info") |>
+  mutate(`Sowing date` = as.Date(`Sowing date`),
+         `Harvest date` = as.Date(`Harvest date`)
+         )
+
+soil_info <- readxl::read_xlsx("../metadata/Site.xlsx", 
+                               sheet = "soil_info")
+
+weather_daily <- load_daymet_weather(
+  site_info,
+  cache_file = "data/NxV_daymet.csv",
+  n_years = 25
+)
+
+rainfall_data <- prepare_cumulative_rainfall(
+  weather_daily,
+  site_info,
+  n_years = 25
+)
+```
+# Site Description
+
+The experiments represented a broad range of environmental conditions across Kansas. Sowing dates ranged from late September to mid-November, while harvest occurred from mid-June to early July. Growing-season precipitation ranged from 372 mm at Phillipsburg in 2024 to 993 mm at Belleville in 2025, illustrating the substantial variation in water availability among environments.
+
+Large year-to-year differences were also observed within locations. Belleville received 803 mm in 2024 and 993 mm in 2025, whereas Manhattan received 813 mm in 2024 and 570 mm in 2025. In contrast, seasonal precipitation at Hays was very similar between years, with 387 mm in 2024 and 394 mm in 2025.
+
+
+```{r, echo=FALSE}
+season_rainfall <- rainfall_data |>
+  group_by(station, Season) |>
+  summarise(`Total prcp (mm)` = sum(Precip, na.rm = TRUE), .groups = "drop")
+
+site_table <- site_info |>
+  mutate(Season = 2000 + Year) |>
+  left_join(season_rainfall, by = c("Site" = "station", "Season")) |>
+  select(Location, Year, Latitude, Longitude, `Sowing date`, `Harvest date`, `Total prcp (mm)`)
+```
+
+
+```{r, echo=FALSE}
+site_table |>
+  arrange(Year, Location) |>
+  knitr::kable(
+    digits = c(NA, 2, 3, 3, NA, NA, 0),
+    align = "llrrrcc"
+  ) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  )
+```
+
+## Initial Soil Conditions
+
+```{r, echo=FALSE}
+soil_table <- soil_info |>
+  knitr::kable(format = "html") |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = TRUE,
+    font_size = 10
+  ) |>
+  kableExtra::column_spec(
+    1:ncol(soil_info),
+    extra_css = "white-space: nowrap;") |>
+  kableExtra::scroll_box(width = "100%")
+
+soil_table
+```
+
+
+```{r,include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+site_geo <- site_info |>
+  filter(!is.na(Longitude), !is.na(Latitude)) |>
+  mutate(Year = as.factor(Year)) |>
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326, remove = FALSE)
+
+ks_boundary <- states(cb = TRUE, year = 2024, class = "sf") |>
+  filter(STUSPS == "KS") |>
+  st_transform(4326)
+
+mapviewOptions(basemaps = "OpenStreetMap")
+```
+
+
+## Geolocation
+
+The experimental network covered a broad geographic range across Kansas, capturing environments from the more water-limited western and central regions to the generally wetter eastern portion of the state.
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+mapview(ks_boundary, color = "black", alpha.regions = 0, lwd = 2, layer.name = "Kansas") +
+  mapview(site_geo, zcol = "Year", cex = 6, popup = c("Location", "Year", "Sowing date"), layer.name = "Harvest year")
+```
+
+## Cumulative Precipitation
+
+Growing-season precipitation differed substantially among locations and years. Belleville experienced the greatest seasonal precipitation, particularly in 2025, while Hays and Phillipsburg represented comparatively dry environments. 
+
+The historical (25 years) trajectories show that the experimental seasons represented different portions of the long-term precipitation distribution. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+trial_years <- sort(unique(year(site_info$`Harvest date`)))
+
+year_colors <- setNames(scales::hue_pal()(length(trial_years)),
+                        as.character(trial_years))
+
+rainfall_colors <- c("All Years" = "grey75", year_colors)
+
+ggplot() +
+  geom_line(data = rainfall_data |> filter(series == "All Years"),
+            aes(x = day, y = cumulative_rainfall, group = interaction(Location, Season),
+                color = series),
+            linewidth = 0.4) +
+  geom_line(data = rainfall_data |> filter(series != "All Years"),
+            aes(x = day, y = cumulative_rainfall, group = interaction(Location, Season),
+                color = series),
+            linewidth = 1.2) +
+  facet_wrap(~ Location, ncol = 3) +
+  scale_color_manual(values = rainfall_colors,
+                     breaks = c(as.character(trial_years), "All Years")) +
+  labs(x = "Days after sowing",
+       y = "Cumulative rainfall (mm)",
+       color = "Growing season") +
+  theme_bw(base_size = 13) +
+  theme(strip.text = element_text(size = 12),
+        legend.position = "bottom")
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+rainfall_data <- rainfall_data |>
+  group_by(Location, station, Season) |>
+  arrange(Date, .by_group = TRUE) |>
+  mutate(
+    mean_temperature = (Tmax + Tmin) / 2,
+    cumulative_mean_temperature = cumsum(mean_temperature),
+    cumulative_solar_radiation = cumsum(Sr)
+  ) |>
+  ungroup()
+```
+
+## Cumulative Temperature
+
+Seasonal temperature accumulation also varied among environments and years, although the experimental seasons generally remained within the range represented by the historical (25 years) weather record.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ggplot() +
+  geom_line(data = rainfall_data |> filter(series == "All Years"),
+            aes(x = day, y = cumulative_mean_temperature, group = interaction(Location, Season),
+                color = series),
+            linewidth = 0.4) +
+  geom_line(data = rainfall_data |> filter(series != "All Years"),
+            aes(x = day, y = cumulative_mean_temperature, group = interaction(Location, Season),
+                color = series),
+            linewidth = 1.2) +
+  facet_wrap(~ Location, ncol = 3) +
+  scale_color_manual(values = rainfall_colors,
+                     breaks = c(as.character(trial_years), "All Years")) +
+  labs(x = "Days after sowing",
+       y = "Cumulative mean temperature (°C)",
+       color = "Growing season") +
+  theme_bw(base_size = 13) +
+  theme(strip.text = element_text(size = 12),
+        legend.position = "bottom")
+```
+
+
+# Descriptive Results
+
+Crop responses to N varied considerably among environments. Therefore, yield, grain protein concentration, and yield components are presented across N rates to characterize the major treatment and environmental patterns before formal statistical analysis. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+yield_hist <- trial_data |>
+  left_join(site_info |> distinct(Site, Year, Location), by = c("Site", "Year")) |>
+  mutate(Year = factor(Year))
+
+ggplot(yield_hist, aes(x = YieldDryBasis_KgHa)) +
+  geom_histogram(bins = 20, color = "black", fill = "grey") +
+  facet_wrap(~ Year, scales = "free_y", ncol = 3) +
+  labs(
+    x = expression("Grain yield (kg ha"^{-1}*")"),
+    y = "Frequency",
+    fill = "Year"
+  ) +
+  theme_nice() +
+  theme(
+    strip.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+yield_spatial <- trial_data |>
+  left_join(site_info |> distinct(Site, Year, Location), by = c("Site", "Year")) 
+
+environments <- yield_spatial |>
+  distinct(Site, Year, Location) |>
+  arrange(Year, Location)
+
+for (i in seq_len(nrow(environments))) {
+
+  site_i <- environments$Site[i]
+  year_i <- environments$Year[i]
+  location_i <- environments$Location[i]
+
+  plot_data <- yield_spatial |>
+    filter(Site == site_i, Year == year_i)
+
+  p <- ggplot(plot_data, aes(x = Row, y = Range, fill = YieldDryBasis_KgHa)) +
+    geom_tile(color = "white", linewidth = 0.2) +
+    scale_fill_viridis_c() +
+    labs(
+      title = paste(location_i, year_i),
+      x = "Row",
+      y = "Range",
+      fill = expression("Yield (kg ha"^{-1}*")")) +
+    theme_nice() +
+    theme(
+      legend.position = "bottom")
+
+  print(p)
+}
+```
+
+
+## Grain Yield Response to Nitrogen
+
+Grain yield response to N was strongly dependent on environment. Clear positive responses to increasing N were observed at locations such as Manhattan and Russell, whereas responses were smaller or less consistent at McPherson and Hutchinson. 
+
+Large differences between growing seasons were evident at locations evaluated in both years. The most pronounced contrasts occurred at Hays and Hoisington, where grain yields in 2024 were substantially lower than those observed in 2025. In contrast, differences between years were smaller at Ashland Bottoms and Belleville.
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+yield_boxplot <- trial_data |>
+  rename(Nrate = Treatment_1) |>
+  left_join(site_info |> distinct(Site, Year, Location), by = c("Site", "Year")) |>
+  mutate(Nrate = factor(Nrate, levels = sort(unique(Nrate))),
+         Year = factor(Year))
+
+ggplot(yield_boxplot, aes(x = Nrate, y = YieldDryBasis_KgHa, fill = Year)) +
+  geom_boxplot(width = 0.7, outlier.alpha = 0.5) +
+  facet_wrap(~ Location, scales = "free_y", ncol = 3) +
+  labs(x = expression("Nitrogen rate (kg N ha"^{-1}*")"),
+       y = expression("Grain yield (kg ha"^{-1}*")"),
+       fill = "Year") +
+  theme_nice()+
+  theme(strip.text = element_text(size = 12),
+        legend.position = "bottom")
+
+
+```
+
+## Grain Protein Response to Nitrogen
+
+Grain protein concentration showed a more consistent response to N than grain yield. Protein concentration generally increased with increasing N rate across environments, although the magnitude of the response differed among locations and years.
+
+A particularly strong year effect was evident at Hoisington. Grain protein concentrations were considerably greater in 2024 than in 2025, while grain yield showed the opposite pattern. The combination of low yield and high grain protein in 2024, compared with higher yield and lower protein in 2025, is consistent with a strong environmental influence on the yield–protein relationship.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+protein_boxplot <- trial_data |>
+  rename(Nrate = Treatment_1) |>
+  left_join(site_info |> distinct(Site, Year, Location), by = c("Site", "Year")) |>
+  mutate(Nrate = factor(Nrate, levels = sort(unique(Nrate))),
+         Year = factor(Year))
+
+ggplot(protein_boxplot, aes(x = Nrate, y = GrainProtein_Pct, fill = Year)) +
+  geom_boxplot(width = 0.7, outlier.alpha = 0.5) +
+  facet_wrap(~Location, scales = "free_y", ncol = 3) +
+  labs(
+    x = expression("Nitrogen rate (kg N ha"^{-1}*")"),
+    y = "Grain protein (%)"
+  ) +
+  theme_nice()+
+  theme(
+    strip.text = element_text(size = 12), 
+    legend.position = "bottom"
+  )
+```
+
+## Yield Components
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+yield_components <- trial_data |>
+  rename(Nrate = Treatment_1, Cultivar = Treatment_2) |>
+  select(Site, Year, Nrate, Cultivar,
+         HeadNumber_No, HeadWeight_g, StoverWeight_g,
+         WholePlantWeight_g, GrainWeight_g, ThousandKernelWeight_g) |>
+  pivot_longer(
+    cols = c(HeadNumber_No, HeadWeight_g, StoverWeight_g,
+             WholePlantWeight_g, GrainWeight_g, ThousandKernelWeight_g),
+    names_to = "Component",
+    values_to = "Value"
+  )
+yield_components_env <- yield_components |>
+  group_by(Site, Year, Nrate, Cultivar, Component) |>
+  summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop")
+
+yield_components_summary <- yield_components_env |>
+  group_by(Nrate, Cultivar, Component) |>
+  summarise(Mean = mean(Value, na.rm = TRUE),
+            SE = sd(Value, na.rm = TRUE) / sqrt(sum(!is.na(Value))),
+            .groups = "drop")
+
+ggplot(yield_components_summary,
+       aes(x = Nrate, y = Mean, color = Cultivar, group = Cultivar)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2) +
+  facet_wrap(~ Component, scales = "free_y", ncol = 2) +
+  labs(
+    x = expression("Nitrogen rate (kg N ha"^{-1}*")"),
+    y = NULL,
+    color = "Cultivar"
+  ) +
+  theme_nice() +
+  theme(
+    strip.text = element_text(size = 12),
+    legend.position = "bottom")
+```
+
+## Field Activities 2023-24
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+activities_2024 <- readxl::read_xlsx("../../SEASON 2023-24/04-Activities Dates/Field Activities_2023-24.xlsx", sheet = "Field_Activities") |> 
+  filter(Trial == "NxV") |> 
+  mutate(
+    Date = as.Date(Date),
+    Activity = str_replace_all(Activity, "_", " ")
+  ) |> 
+  drop_na(Date) |>
+  select(Location, Activity, Date, FEEKES) |>
+  arrange(Location, Date)
+
+activities_2025 <- readxl::read_xlsx("../../SEASON 2024-25/04-Activities Dates/Field Activities_2024-25.xlsx", sheet = "Field_Activities") |> 
+  filter(Trial == "NxV") |> 
+  mutate(
+    Date = as.Date(Date),
+    Activity = str_replace_all(Activity, "_", " ")
+  ) |> 
+  drop_na(Date) |>
+  select(Location, Activity, Date, Feekes) |>
+  arrange(Location, Date)
+
+activities_2024 |>
+  knitr::kable(
+    col.names = c("Location", "Activity", "Date", "Feekes"),
+    align = c("l", "l", "c", "c")
+  ) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  ) |>
+  kableExtra::collapse_rows(
+    columns = 1,
+    valign = "middle"
+  )
+```
+
+## Field Activities 2024-25
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+activities_2025 |>
+  knitr::kable(
+    col.names = c("Location", "Activity", "Date", "Feekes"),
+    align = c("l", "l", "c", "c")
+  ) |>
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  ) |>
+  kableExtra::collapse_rows(
+    columns = 1,
+    valign = "middle")
+```
+
+
+

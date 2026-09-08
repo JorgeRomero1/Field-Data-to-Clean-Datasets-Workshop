@@ -1,0 +1,34 @@
+TRAIT,TRAIT_SHORT
+Spring Tiller Count,STC
+Biomass sampling,BS
+Fall Stand count,FSC
+Chaff,CH
+Spring Stand count,SSC
+Spring dry biomass weight ,SDB
+Spring fresh biomass weight,SFB
+Fall fresh biomass weight,FFB
+Fall dry biomass weight,FDB
+Tiller Count,TC
+Crop vigor score,CVS
+evaluate disease severity,DS
+Disease severity ,DS
+Flowering percentage,FWR
+Stover ,ST
+Grain,GR
+Head,HD
+Whole plant,WP
+Lodging ,LDG
+Plant Height 1,PH1
+Plant Height 2,PH2
+Plant Height 3,PH3
+Plant Height 3,PH3
+Plant Height 4,PH4
+Plant  high,PH
+Canopy Cover ,CCP
+Stover+Chaff,S+C
+Stand Count 1,SC1
+Stand Count 2,SC2
+Number of heads (heads/m),HDN
+Head weight (g/m),HW
+Whole pant weight,WPW
+Stover weight (g/m),STW
